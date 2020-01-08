@@ -5,7 +5,7 @@
 - [x] in-dist training
 - [x] ood training
 - [x] classifier pretraining
-- [ ] *checkpoints*
+- [ ] **checkpoints**
 - [ ] INN training
 - [x] conditional training
 - [x] Adam betas
