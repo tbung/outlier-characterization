@@ -1,5 +1,9 @@
 import torch
 import torch.nn as nn
+
+import FrEIA.framework as fw
+import FrEIA.modules as mods
+
 import config as c
 
 
@@ -13,16 +17,16 @@ class Classifier(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(2),
             nn.Conv2d(128, 256, 5),
-            nn.BatchNorm2d(256),
+            # nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.MaxPool2d(2),
         )
         self.fc_layers = nn.Sequential(
             nn.Linear(6400, 512),
-            nn.BatchNorm1d(512),
+            # nn.BatchNorm1d(512),
             nn.ReLU(),
             nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
+            # nn.BatchNorm1d(512),
             nn.ReLU(),
             nn.Linear(512, c.ncl),
         )
@@ -134,6 +138,26 @@ class Discriminator(nn.Module):
         return self.main(x)
 
 
-class INN(nn.Module):
-    # TODO
-    pass
+def INN():
+    cond_size = 10
+    cond_node = fw.ConditionNode(cond_size)
+
+    nodes = [fw.InputNode(c.nch, 32, 32, name='inp')]
+
+    nodes.append(fw.Node([nodes[-1].out0], mods.flattening_layer, {}, name='flatten'))
+
+    for i in range(c.n_blocks):
+        nodes.append(fw.Node([nodes[-1].out0], mods.permute_layer, {'seed': i},
+                             name=F'permute_{i}'))
+        nodes.append(fw.Node(
+            [nodes[-1].out0], mods.glow_coupling_layer, {
+                'clamp': c.clamping, 'F_class': mods.F_fully_connected,
+                'F_args': {'dropout': c.fc_dropout,
+                           'internal_size': c.internal_width}
+            }, conditions=cond_node, name=F'fc_{i}'
+        ))
+
+    nodes.append(fw.OutputNode([nodes[-1].out0], name='out'))
+    nodes.append(cond_node)
+
+    return fw.ReversibleGraphNet(nodes, verbose=False)
