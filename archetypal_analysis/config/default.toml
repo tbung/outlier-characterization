@@ -1,0 +1,9 @@
+latent_dim = 2
+n_epochs = 5000
+lr = 1e-4
+add_noise_scale = 0.15
+# DAA loss weights
+at_loss_factor = 1.0  # 80.0
+class_loss_factor = 1.0  # 80.0
+recon_loss_factor = 10.0  # 1.0
+kl_loss_factor = 1.0  # 40.0
