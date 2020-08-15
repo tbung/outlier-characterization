@@ -1,0 +1,49 @@
+# Experiment
+train_inner_gan = false
+train_inner_inn = true
+
+train_outer_gan = false
+train_outer_inn = false
+
+use_discriminator = false  # use discriminator output to train inn
+use_min_likelihood = false  # use min likelihood on ood samples for inn
+pretrain_classifier = false
+restore = true
+
+conditional = true
+dataset = "EMNIST"
+
+# DCGAN Parameters
+nch = 1
+img_width = 32
+nz = 100
+ngf = 64
+ndf = 64
+ncl = 10
+
+# INN Parameters
+couplig_type = "GIN"
+n_blocks = 24
+internal_width = 256
+clamping = 1.5
+fc_dropout = 0.0
+init_scale = 0.03
+add_image_noise = 0.15
+eps = 1.0
+
+# Training Parameters
+n_epochs = 1500
+n_epochs_pretrain = 10
+
+batch_size = 512
+lr_generator = 1e-4
+lr_discriminator = 1e-4
+lr_classifier = 1e-3
+lr_step = 1.0
+lr_decay = 0.01  # **(1/self.n_epochs)
+lambda_mll = 0.00001
+
+beta_classifier = 1.0
+beta_generator = 50.0
+
+log_interval = 50.0
