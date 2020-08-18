@@ -222,11 +222,11 @@ class INN(nn.Module):
         losses = {}
         cond = self.labels2condition(labels)
         latent = self(samples, cond)
-        losses["Neg Log-Likeli"] = self.negative_log_likelihood(latent, labels)
+        losses["NLL"] = self.negative_log_likelihood(latent, labels)
         if self.use_min_likelihood:
             latent = self(ood_samples, cond)
-            losses["OoD Log-Likeli"] = self.negative_log_likelihood(latent,
-                                                                    labels)
+            losses["OoD LL"] = self.negative_log_likelihood(latent,
+                                                            labels)
 
         return losses
 
