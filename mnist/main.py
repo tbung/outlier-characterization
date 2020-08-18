@@ -1,0 +1,170 @@
+from pathlib import Path
+
+import torch
+from torch.utils.tensorboard import SummaryWriter
+import torchvision
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+from crayons import red
+
+import data
+import models
+from utils import config, logger
+
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+def tensor2imgs(t, n=8):
+    imgrid = torchvision.utils.make_grid(t, n)
+    return imgrid.data.mul(255).clamp(0, 255).byte().cpu().numpy()
+
+
+if __name__ == "__main__":
+    # Load config and set up logging and stuff
+    c = config.Config()
+    c.parse_args()
+
+    writer = SummaryWriter(comment=f"_{c.model_type}")
+    log = logger.LossLogger()
+
+    checkpoints_path = Path(writer.get_logdir()) / 'checkpoints'
+    checkpoints_path.mkdir(exist_ok=True)
+
+    c.save(checkpoints_path / 'config.toml')
+
+    writer.add_hparams(c.__dict__, {})
+
+    # Prepare model, dataset and any other things we need during training
+    dataset_train = data.get_dataset(c.dataset, train=True)
+
+    model = models.get_model(c.model_type)(**c.__dict__)
+    model.to(device)
+
+    optimizer = torch.optim.Adam(
+        list(filter(lambda p: p.requires_grad, model.parameters())),
+        lr=c.lr, betas=[0.9, 0.999], weight_decay=1e-5
+    )
+
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, c.lr_step, c.lr_step
+    )
+
+    # Prepare constants for plotting, etc.
+    fixed_noise_inn = torch.randn(100, c.n_channels * c.img_width * c.img_width,
+                                  device=device)
+
+    fixed_labels = torch.tensor(list(range(c.n_classes)),
+                                device=device).repeat_interleave(c.n_classes)
+
+    fixed_cond = model.labels2condition(fixed_labels)
+
+    n_archetypes = c.latent_dim + (2 if c.use_proto_z else 1)
+    fixed_cond_z = model.labels2condition(
+        torch.tensor(range(10), device=device).repeat_interleave(n_archetypes)
+    )
+
+    try:  # Catch KeyboardInterrupts to do checkpointing
+        for epoch in range(c.n_epochs):
+            for n, (samples, labels) in enumerate(tqdm(dataset_train,
+                                                       leave=False,
+                                                       mininterval=1.)):
+
+                n_iter = n + (epoch * len(dataset_train))
+
+                samples, labels = samples.to(device), labels.to(device)
+
+                samples += c.add_image_noise * torch.randn_like(samples, device=device)
+
+                optimizer.zero_grad()
+                losses = model.compute_losses(samples, labels)
+                for key, loss in losses.items():
+                    loss.backward(retain_graph=True)
+                    writer.add_scalar(f'Loss/{key}', loss, n_iter)
+                    log.add_loss(f'{key}', loss)
+                optimizer.step()
+
+            with torch.no_grad():
+                # Plot latent sample
+                if c.model_type == 'INN':
+                    samples = model.sample(fixed_noise_inn, fixed_cond)
+                else:
+                    samples = model.inn.sample(fixed_noise_inn, fixed_cond)
+                writer.add_image(
+                    'Samples/In-Distribution',
+                    tensor2imgs(samples, c.n_classes),
+                    epoch
+                )
+
+                if c.model_type == 'INN_AA':
+                    # Plot z_arch
+                    samples, _ = model.sample(
+                        torch.eye(n_archetypes,
+                                  device=device).repeat(c.n_classes, 1),
+                        fixed_cond_z
+                    )
+                    writer.add_image('Z_fixed',
+                                     tensor2imgs(samples, n_archetypes), epoch)
+
+                    # TODO: Plot archetype sample
+
+                    # Plot recreation
+                    x, y = next(iter(dataset_train))
+                    x, y = x.to(device), y.to(device)
+                    t, A, B = model(x, model.labels2condition(y))
+                    recreated, sideinfo = model.sample(A, model.labels2condition(y))
+                    writer.add_image('Recreated', tensor2imgs(recreated[:64]), epoch)
+
+                    # Plot latent space projection
+                    if epoch % 10 == 0:
+                        latent_codes = torch.empty(0, c.latent_dim)
+                        all_labels = torch.empty(0, dtype=torch.long)
+                        for samples, labels in tqdm(dataset_train,
+                                                    leave=False):
+                            samples, labels = samples.to(device), labels.to(device)
+                            t, A, B = model(samples,
+                                            model.labels2condition(labels))
+                            if c.interpolation == "linear":
+                                latent_codes = torch.cat([
+                                    latent_codes, (A @ model.z_arch).cpu()
+                                ], dim=0)
+                            elif c.interpolation == "slerp":
+                                A_ = torch.sin(A * np.pi * 2/3)
+                                latent_codes = torch.cat([
+                                    latent_codes,
+                                    (A_ @ model.z_arch
+                                     / np.sin(np.pi * 2/3)).cpu()
+                                ], dim=0)
+                            all_labels = torch.cat([all_labels, labels.cpu()], dim=0)
+
+                        # Try to do PCA, ignore if it fails
+                        try:
+                            if c.latent_dim > 2:
+                                _, _, v = torch.svd(latent_codes)
+                                latent_codes = latent_codes @ v
+
+                            fig, ax = plt.subplots()
+                            img = ax.scatter(
+                                latent_codes[:, 0], latent_codes[:, 1],
+                                alpha=0.4, c=all_labels, cmap='tab10', vmin=0,
+                                vmax=9
+                            )
+                            ax.scatter(
+                                model.z_arch[:, 0].cpu(),
+                                model.z_arch[:, 1].cpu(),
+                                marker='x', s=100, c='k'
+                            )
+                            ax.set_aspect('equal')
+                            fig.colorbar(img)
+                            writer.add_figure('Latent Space', fig, epoch)
+                            writer.flush()
+                        except ValueError:
+                            writer.flush()
+            log.flush()
+            scheduler.step()
+
+            model.save(checkpoints_path / f'{c.model_type}.pt')
+
+    except KeyboardInterrupt:
+        print(red("Interrupted", bold=True))

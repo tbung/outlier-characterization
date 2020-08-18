@@ -9,6 +9,10 @@ class Config:
     def load(self, path):
         self.__dict__.update(toml.load(path))
 
+    def save(self, path):
+        with open(path, "w") as f:
+            toml.dump(self.__dict__, f)
+
     def update(self, data):
         self.__dict__.update(data)
 
