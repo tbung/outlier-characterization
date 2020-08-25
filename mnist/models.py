@@ -1,3 +1,4 @@
+from functools import partial
 import torch
 import torch.nn as nn
 import numpy as np
@@ -14,6 +15,8 @@ def construct_inn(img_width,
                   n_classes,
                   coupling_type,
                   clamping,
+                  internal_widths,
+                  conditional
                   ):
     '''Construct a invertible neural network'''
 
@@ -24,32 +27,51 @@ def construct_inn(img_width,
         'GIN': Fm.GINCouplingBlock,
     }
 
-    cond_nodes = [
-        Ff.ConditionNode(n_classes, img_width//2, img_width//2),
-        Ff.ConditionNode(n_classes, img_width//4, img_width//4),
-        Ff.ConditionNode(n_classes)
-    ]
+    if conditional:
+        cond_nodes = [
+            Ff.ConditionNode(n_classes, img_width//2, img_width//2),
+            Ff.ConditionNode(n_classes, img_width//4, img_width//4),
+            Ff.ConditionNode(n_classes)
+        ]
+    else:
+        cond_nodes = [None, None, None]
 
-    def subnet_conv(ch_in, ch_out):
-        width = 32
-        return nn.Sequential(nn.Conv2d(ch_in, width, 3, padding=1), nn.ReLU(),
-                             nn.Conv2d(width, width, 3, padding=1), nn.ReLU(),
-                             nn.Conv2d(width, ch_out, 3, padding=1))
+    def subnet_conv(ch_in, ch_out, width):
+        subnet = nn.Sequential(nn.Conv2d(ch_in, width, 3, padding=1), nn.ReLU(),
+                               nn.Conv2d(width, width, 3, padding=1), nn.ReLU(),
+                               nn.Conv2d(width, ch_out, 3, padding=1))
+        for l in subnet:
+            if isinstance(l, nn.Conv2d):
+                nn.init.xavier_normal_(l.weight)
+        subnet[-1].weight.data.fill_(0.)
+        subnet[-1].bias.data.fill_(0.)
+        return subnet
 
-    def subnet_conv_1x1(ch_in, ch_out):
-        width = 32
-        return nn.Sequential(nn.Conv2d(ch_in, width, 1), nn.ReLU(),
-                             nn.Conv2d(width, width, 1), nn.ReLU(),
-                             nn.Conv2d(width, ch_out, 1))
+    def subnet_conv_1x1(ch_in, ch_out, width):
+        subnet = nn.Sequential(nn.Conv2d(ch_in, width, 1), nn.ReLU(),
+                                nn.Conv2d(width, width, 1), nn.ReLU(),
+                                nn.Conv2d(width, ch_out, 1))
+        for l in subnet:
+            if isinstance(l, nn.Conv2d):
+                nn.init.xavier_normal_(l.weight)
+        subnet[-1].weight.data.fill_(0.)
+        subnet[-1].bias.data.fill_(0.)
+        return subnet
 
     def subnet_fc(ch_in, ch_out):
         width = 392
-        return nn.Sequential(nn.Linear(ch_in, width), nn.ReLU(),
-                             nn.Linear(width, width), nn.ReLU(),
-                             nn.Linear(width, ch_out))
+        subnet = nn.Sequential(nn.Linear(ch_in, width), nn.ReLU(),
+                               nn.Linear(width, width), nn.ReLU(),
+                               nn.Linear(width, ch_out))
+        for l in subnet:
+            if isinstance(l, nn.Linear):
+                nn.init.xavier_normal_(l.weight)
+        subnet[-1].weight.data.fill_(0.)
+        subnet[-1].bias.data.fill_(0.)
+        return subnet
 
     mod_args = {
-                'subnet_constructor': subnet_conv,
+                'subnet_constructor': partial(subnet_conv, width=internal_widths[0]),
     }
 
     if coupling_type != 'NICE':
@@ -70,7 +92,7 @@ def construct_inn(img_width,
     nodes.append(Ff.Node(nodes[-1], Fm.IRevNetDownsampling, {}))
 
     mod_args = {
-                'subnet_constructor': subnet_conv,
+                'subnet_constructor': partial(subnet_conv, width=internal_widths[1]),
     }
 
     if coupling_type != 'NICE':
@@ -78,9 +100,10 @@ def construct_inn(img_width,
 
     for i in range(4):
         if i % 2 == 0:
-            mod_args['subnet_constructor'] = subnet_conv_1x1
+            mod_args['subnet_constructor'] = partial(subnet_conv_1x1,
+                                                     width=internal_widths[1])
         else:
-            mod_args['subnet_constructor'] = subnet_conv
+            mod_args['subnet_constructor'] = partial(subnet_conv, width=internal_widths[1])
 
         nodes.append(Ff.Node(
             [nodes[-1].out0], layer_types[coupling_type], mod_args,
@@ -116,7 +139,8 @@ def construct_inn(img_width,
     #                      Fm.Concat1d, {'dim': 0}, name='concat'))
 
     nodes.append(Ff.OutputNode([nodes[-1].out0], name='out'))
-    nodes.extend(cond_nodes)
+    if conditional:
+        nodes.extend(cond_nodes)
 
     return Ff.ReversibleGraphNet(nodes, verbose=False)
 
@@ -127,6 +151,9 @@ class INN(nn.Module):
                  n_channels=1,
                  n_classes=10,
                  coupling_type='GLOW',
+                 conditional=True,
+                 internal_width1=32,
+                 internal_width2=32,
                  clamping=1.5,
                  load_inn=False,
                  latent_dist='normal',
@@ -141,9 +168,11 @@ class INN(nn.Module):
         self.latent_dist = latent_dist
         self.use_min_likelihood = use_min_likelihood
         self.lambda_mll = lambda_mll
+        self.conditional = conditional
 
         self.inn = construct_inn(img_width, n_channels, n_classes,
-                                 coupling_type, clamping)
+                                 coupling_type, clamping, [internal_width1,
+                                 internal_width2], conditional)
 
         if load_inn:
             self.inn.load_state_dict(
@@ -152,10 +181,14 @@ class INN(nn.Module):
                 )))
 
     def forward(self, x, cond=None):
+        if not self.conditional:
+            cond = None
         t = self.inn(x, cond)
         return t
 
     def sample(self, t, cond=None):
+        if not self.conditional:
+            cond = None
         return self.inn(t, cond, rev=True)
 
     def labels2condition(self, labels):
