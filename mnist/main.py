@@ -87,6 +87,18 @@ if __name__ == "__main__":
 
             with torch.no_grad():
                 # Plot latent sample
+                if c.latent_dist == 'mixture':
+                    latent = model(samples, model.labels2condition(labels))
+                    mean = torch.zeros(c.n_classes, latent.shape[1], dtype=torch.float,
+                                       device=device)
+                    var = torch.zeros(c.n_classes, latent.shape[1], dtype=torch.float,
+                                      device=device)
+                    for i in range(c.n_classes):
+                        mean[i] = latent[labels == i].mean(dim=0)
+                        var[i] = latent[labels == i].var(dim=0)
+                    fixed_noise_inn = torch.normal(mean[fixed_labels],
+                                                   var[fixed_labels])
+
                 if c.model_type == 'INN':
                     samples = model.sample(fixed_noise_inn, fixed_cond)
                 else:
