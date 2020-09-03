@@ -79,10 +79,13 @@ if __name__ == "__main__":
 
                 optimizer.zero_grad()
                 losses = model.compute_losses(samples, labels)
+                total_loss = torch.tensor(0)
                 for key, loss in losses.items():
-                    loss.backward(retain_graph=True)
+                    total_loss = total_loss + loss
                     writer.add_scalar(f'Loss/{key}', loss, n_iter)
                     log.add_loss(f'{key}', loss)
+
+                total_loss.backward()
                 optimizer.step()
 
             with torch.no_grad():
