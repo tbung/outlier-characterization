@@ -15,7 +15,7 @@ def get_dataset(name, train=True):
                                 transforms.Lambda(lambda x: x.permute(0, 2, 1)),
                                 # transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
                             ])),
-            batch_size=512, shuffle=True, pin_memory=True, num_workers=4,
+            batch_size=512, shuffle=True, pin_memory=True, num_workers=8,
             drop_last=True
         )
 
@@ -29,7 +29,7 @@ def get_dataset(name, train=True):
                                 transforms.Lambda(lambda x: x.permute(0, 2, 1)),
                                 # transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
                             ])),
-            batch_size=512, shuffle=True, pin_memory=True, num_workers=4,
+            batch_size=512, shuffle=True, pin_memory=True, num_workers=8,
             drop_last=True
         )
 
