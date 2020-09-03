@@ -319,6 +319,7 @@ class INN_AA(nn.Module):
                  fix_z_arch=True,
                  use_proto_z=False,
                  z_from_similar=False,
+                 lambda_nll=1,
                  lambda_at=10,
                  lambda_recon=1,
                  lambda_class=1,
@@ -332,6 +333,7 @@ class INN_AA(nn.Module):
         self.weight_norm_exp = weight_norm_exp
         self.weight_norm_constraint = weight_norm_constraint
         self.interpolation = interpolation
+        self.lambda_nll = lambda_nll
         self.lambda_at = lambda_at
         self.lambda_recon = lambda_recon
         self.lambda_class = lambda_class
@@ -434,7 +436,7 @@ class INN_AA(nn.Module):
 
         if not self.fix_inn:
             neg_log_likeli = self.inn.negative_log_likelihood(t, labels)
-            losses['NLL'] = neg_log_likeli
+            losses['NLL'] = self.lambda_nll * neg_log_likeli
         losses['AT'] = self.lambda_at * at_loss
         losses['Recon'] = self.lambda_recon * recon_loss
         losses['Class'] = self.lambda_class * class_loss
