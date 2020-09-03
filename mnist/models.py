@@ -26,6 +26,7 @@ def construct_inn(img_width,
         'GLOW': Fm.GLOWCouplingBlock,
         'GIN': Fm.GINCouplingBlock,
     }
+    print(internal_widths)
 
     if conditional:
         cond_nodes = [
@@ -177,8 +178,9 @@ class INN(nn.Module):
         if load_inn:
             self.inn.load_state_dict(
                 dict(filter(
-                    lambda x: 'tmp' not in x[0], torch.load(load_inn).items()
-                )))
+                    lambda x: 'tmp' not in x[0], map(
+                        lambda x: (x[0].replace('inn.', ''), x[1]), torch.load(load_inn).items()
+                    ))))
 
     def forward(self, x, cond=None):
         if not self.conditional:
@@ -292,7 +294,7 @@ def build_z_simplex(latent_dim, use_inlier=False):
             z_fixed_t[k, j] = (-1.0 / float(latent_dim) - s) / z_fixed_t[k, k]
             z_fixed = np.transpose(z_fixed_t)
     return torch.tensor(z_fixed, device=device, dtype=torch.float,
-                        requires_grad=True)
+                        requires_grad=False)
 
 
 def build_z_from_letters(latent_dim):
@@ -316,10 +318,13 @@ class INN_AA(nn.Module):
                  fix_inn=False,
                  fix_z_arch=True,
                  use_proto_z=False,
+                 z_from_similar=False,
                  lambda_at=10,
                  lambda_recon=1,
                  lambda_class=1,
                  lambda_proto=100,
+                 internal_width1=32,
+                 internal_width2=32,
                  **kwargs
                  ):
         super(INN_AA, self).__init__()
@@ -336,7 +341,7 @@ class INN_AA(nn.Module):
 
 
         # TODO: Handle other cases
-        if use_proto_z:
+        if z_from_similar:
             self.z_arch = build_z_from_letters(latent_dim)
         else:
             self.z_arch = build_z_simplex(latent_dim, use_proto_z)
@@ -374,6 +379,8 @@ class INN_AA(nn.Module):
             clamping=clamping,
             load_inn=load_inn,
             latent_dist=latent_dist,
+            internal_width1=internal_width1,
+            internal_width2=internal_width2,
         )
 
         if fix_inn:
@@ -413,7 +420,7 @@ class INN_AA(nn.Module):
 
     def compute_losses(self, samples, labels):
         losses = {}
-        cond = self.inn.labels2condition(labels)
+        cond = self.labels2condition(labels)
         t, A, B = self(samples, cond)
 
         recreated, sideinfo = self.sample(A, cond)
@@ -458,5 +465,7 @@ def get_model(name):
         return INN
     elif name == 'INN_AA':
         return INN_AA
+    elif name == 'DCGAN':
+        raise NotImplementedError()
     else:
         raise Exception(f'Model type {name} is not known')
