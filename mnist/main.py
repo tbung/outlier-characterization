@@ -69,7 +69,9 @@ if __name__ == "__main__":
         for epoch in range(c.n_epochs):
             for n, (samples, labels) in enumerate(tqdm(dataset_train,
                                                        leave=False,
-                                                       mininterval=1.)):
+                                                       mininterval=1.,
+                                                       ncols=80,
+                                                       dynamic_ncols=True)):
 
                 n_iter = n + (epoch * len(dataset_train))
 
