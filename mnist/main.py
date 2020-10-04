@@ -1,9 +1,9 @@
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import torchvision
-import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from crayons import red
@@ -132,6 +132,7 @@ if __name__ == "__main__":
                     t, A, B = model(x, model.labels2condition(y))
                     recreated, sideinfo = model.sample(A, model.labels2condition(y))
                     writer.add_image('Recreated', tensor2imgs(recreated[:64]), epoch)
+                    z_pred = B @ A @ model.z_arch
 
                     # Plot latent space projection
                     if epoch % 10 == 0:
@@ -172,6 +173,11 @@ if __name__ == "__main__":
                                 model.z_arch[:, 1].cpu(),
                                 marker='x', s=100, c='k'
                             )
+                            ax.scatter(
+                                z_pred[:, 0].cpu(),
+                                z_pred[:, 1].cpu(),
+                                marker='x', s=100, c='r'
+                            )
                             ax.set_aspect('equal')
                             fig.colorbar(img)
                             writer.add_figure('Latent Space', fig, epoch)
@@ -181,7 +187,8 @@ if __name__ == "__main__":
             log.flush()
             scheduler.step()
 
-            model.save(checkpoints_path / f'{c.model_type}.pt')
+            if epoch % 10 == 0:
+                model.save(checkpoints_path / f'{c.model_type}_{epoch}.pt')
 
     except KeyboardInterrupt:
         print(red("Interrupted", bold=True))

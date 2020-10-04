@@ -1,7 +1,7 @@
 from functools import partial
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 
 import FrEIA.framework as Ff
 import FrEIA.modules as Fm
@@ -293,6 +293,20 @@ def build_z_simplex(latent_dim, use_inlier=False):
 
             z_fixed_t[k, j] = (-1.0 / float(latent_dim) - s) / z_fixed_t[k, k]
             z_fixed = np.transpose(z_fixed_t)
+
+    for n in range(latent_dim):
+        for i in range(n):
+            R = np.eye(latent_dim)
+
+            a = np.arctan(z_fixed[n, i]/z_fixed[n, i+1])
+
+            R[i, i] = np.cos(a)
+            R[i, i+1] = np.sin(a)
+            R[i+1, i] = -np.sin(a)
+            R[i+1, i+1] = np.cos(a)
+
+            z_fixed = z_fixed @ R
+
     return torch.tensor(z_fixed, device=device, dtype=torch.float,
                         requires_grad=False)
 
