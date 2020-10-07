@@ -20,8 +20,12 @@ class Config:
         """Parses config file and updates with additional args."""
 
         cf_parser = argparse.ArgumentParser()
-        cf_parser.add_argument('-c', '--config', type=argparse.FileType('r'),
-                               default='./config/default.toml')
+        cf_parser.add_argument(
+            "-c",
+            "--config",
+            type=argparse.FileType("r"),
+            default="./config/default.toml",
+        )
         args, extra_args = cf_parser.parse_known_args()
 
         params = toml.loads(args.config.read())
@@ -29,8 +33,7 @@ class Config:
         param_parser = argparse.ArgumentParser()
 
         for param, value in params.items():
-            param_parser.add_argument(f'--{param}', type=type(value),
-                                      default=value)
+            param_parser.add_argument(f"--{param}", type=type(value), default=value)
 
         params.update(vars(param_parser.parse_args(extra_args)))
 

@@ -1,12 +1,16 @@
 train_inner_gan = True
 train_inner_inn = False
 
-assert (not (train_inner_inn and train_inner_gan)), "In-Distribution network can either be a GAN or an INN"
+assert not (
+    train_inner_inn and train_inner_gan
+), "In-Distribution network can either be a GAN or an INN"
 
 train_outer_gan = True
 train_outer_inn = False
 
-assert (not (train_outer_inn and train_outer_gan)), "Out-of-Distribution network can either be a GAN or an INN"
+assert not (
+    train_outer_inn and train_outer_gan
+), "Out-of-Distribution network can either be a GAN or an INN"
 
 pretrain_classifier = True
 

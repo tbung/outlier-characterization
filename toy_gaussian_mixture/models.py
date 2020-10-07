@@ -40,7 +40,7 @@ class Discriminator(nn.Module):
             nn.Linear(c.ndf, c.ndf),
             nn.ReLU(True),
             nn.Linear(c.ndf, 1),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
         self.main = main
 
@@ -58,7 +58,7 @@ class Classifier(nn.Module):
             nn.ReLU(True),
             nn.Linear(c.ncf, c.ncf),
             nn.ReLU(True),
-            nn.Linear(c.ncf, 2)
+            nn.Linear(c.ncf, 2),
         )
 
     def forward(self, inputs):
@@ -66,19 +66,22 @@ class Classifier(nn.Module):
 
 
 def subnet_fc(c_in, c_out):
-    return nn.Sequential(nn.Linear(c_in, c.ngf), nn.ReLU(),
-                         nn.Linear(c.ngf,  c_out))
+    return nn.Sequential(nn.Linear(c_in, c.ngf), nn.ReLU(), nn.Linear(c.ngf, c_out))
 
 
 def INN():
-    nodes = [Ff.InputNode(2, name='input')]
+    nodes = [Ff.InputNode(2, name="input")]
 
     # Use a loop to produce a chain of coupling blocks
     for k in range(2):
-        nodes.append(Ff.Node(nodes[-1],
-                             Fm.GLOWCouplingBlock,
-                             {'subnet_constructor': subnet_fc, 'clamp': 2.0},
-                             name=F'coupling_{k}'))
+        nodes.append(
+            Ff.Node(
+                nodes[-1],
+                Fm.GLOWCouplingBlock,
+                {"subnet_constructor": subnet_fc, "clamp": 2.0},
+                name=f"coupling_{k}",
+            )
+        )
 
-    nodes.append(Ff.OutputNode(nodes[-1], name='output'))
+    nodes.append(Ff.OutputNode(nodes[-1], name="output"))
     return Ff.ReversibleGraphNet(nodes)

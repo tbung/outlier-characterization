@@ -8,9 +8,7 @@ import numpy as np
 class LossLogger:
     def __init__(self):
         # Build state dict
-        self.losses = OrderedDict({
-            "Epoch": 0
-        })
+        self.losses = OrderedDict({"Epoch": 0})
 
         self.are_headers_logged = False
 
@@ -27,14 +25,19 @@ class LossLogger:
         if not self.are_headers_logged:
             self.are_headers_logged = True
             self.loss_format = "{:>15}" * len(self.losses)
-            tqdm.write(str(white(self.loss_format.format(*self.losses.keys()),
-                                 bold=True)))
+            tqdm.write(
+                str(white(self.loss_format.format(*self.losses.keys()), bold=True))
+            )
 
-        tqdm.write(self.loss_format.format(
-            f'{self.losses["Epoch"]}',
-            *[f'{np.mean(np.array(v)):.3f}' for _, v in
-              list(self.losses.items())[1:]]
-        ))
+        tqdm.write(
+            self.loss_format.format(
+                f'{self.losses["Epoch"]}',
+                *[
+                    f"{np.mean(np.array(v)):.3f}"
+                    for _, v in list(self.losses.items())[1:]
+                ],
+            )
+        )
 
         for k in self.losses.keys():
             if k == "Epoch":
