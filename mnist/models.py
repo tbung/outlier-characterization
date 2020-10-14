@@ -356,7 +356,8 @@ def build_z_simplex(latent_dim, use_inlier=False):
         for i in range(n):
             R = np.eye(latent_dim)
 
-            a = np.arctan(z_fixed[n, i] / z_fixed[n, i + 1])
+            e = 1e-64 if z_fixed[n, i + 1] == 0 else 0
+            a = np.arctan(z_fixed[n, i] / (z_fixed[n, i + 1] + e))
 
             R[i, i] = np.cos(a)
             R[i, i + 1] = np.sin(a)
