@@ -333,7 +333,7 @@ class INN(nn.Module):
         )
 
 
-def build_z_simplex(latent_dim, use_inlier=False):
+def build_z_simplex(latent_dim, use_inlier=False, requires_grad=False):
     """Return vertices of a simplex in dimension param:laten_dim"""
     z_fixed_t = np.zeros([latent_dim, latent_dim + (2 if use_inlier else 1)])
 
@@ -366,7 +366,9 @@ def build_z_simplex(latent_dim, use_inlier=False):
 
             z_fixed = z_fixed @ R
 
-    return torch.tensor(z_fixed, device=device, dtype=torch.float, requires_grad=False)
+    return torch.tensor(
+        z_fixed, device=device, dtype=torch.float, requires_grad=requires_grad
+    )
 
 
 def build_z_from_letters(latent_dim):
@@ -418,10 +420,12 @@ class INN_AA(nn.Module):
         if z_from_similar:
             self.z_arch = build_z_from_letters(latent_dim)
         else:
-            self.z_arch = build_z_simplex(latent_dim, use_proto_z)
+            self.z_arch = build_z_simplex(
+                latent_dim, use_proto_z, requires_grad=not fix_z_arch
+            )
 
         if not fix_z_arch:
-            self.z_arch = nn.Parameter(self.z_arch)
+            self.z_arch = nn.Parameter(self.z_arch, requires_grad=True)
 
         n_archs = latent_dim + (2 if use_proto_z else 1)
 
