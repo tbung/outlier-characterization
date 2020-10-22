@@ -1,5 +1,6 @@
 import argparse
 import toml
+import distutils
 
 
 class Config:
@@ -33,7 +34,16 @@ class Config:
         param_parser = argparse.ArgumentParser()
 
         for param, value in params.items():
-            param_parser.add_argument(f"--{param}", type=type(value), default=value)
+            # Boolean flags should accept an argument so that they can have
+            # default values. By default python interprets "--flag False" as
+            # True so we need to give it a conversion function
+            param_parser.add_argument(
+                f"--{param}",
+                type=type(value)
+                if type(value) is not bool
+                else distutils.util.strtobool,
+                default=value,
+            )
 
         params.update(vars(param_parser.parse_args(extra_args)))
 
