@@ -333,7 +333,9 @@ class INN(nn.Module):
         )
 
 
-def build_z_simplex(latent_dim, use_inlier=False, requires_grad=False):
+def build_z_simplex(
+    latent_dim, use_inlier=False, requires_grad=False, z_per_class=False, n_classes=1
+):
     """Return vertices of a simplex in dimension param:laten_dim"""
     z_fixed_t = np.zeros([latent_dim, latent_dim + (2 if use_inlier else 1)])
 
@@ -366,9 +368,14 @@ def build_z_simplex(latent_dim, use_inlier=False, requires_grad=False):
 
             z_fixed = z_fixed @ R
 
-    return torch.tensor(
+    z_fixed = torch.tensor(
         z_fixed, device=device, dtype=torch.float, requires_grad=requires_grad
     )
+
+    if z_per_class:
+        return z_fixed.repeat(n_classes, 1, 1)
+    else:
+        return z_fixed
 
 
 def build_z_from_letters(latent_dim):
@@ -394,6 +401,7 @@ class INN_AA(nn.Module):
         fix_z_arch=True,
         use_proto_z=False,
         z_from_similar=False,
+        z_per_class=False,
         lambda_nll=1,
         lambda_at=10,
         lambda_recon=1,
@@ -415,13 +423,18 @@ class INN_AA(nn.Module):
         self.lambda_proto = lambda_proto
         self.use_proto_z = use_proto_z
         self.fix_inn = fix_inn
+        self.z_per_class = z_per_class
 
         # TODO: Handle other cases
         if z_from_similar:
             self.z_arch = build_z_from_letters(latent_dim)
         else:
             self.z_arch = build_z_simplex(
-                latent_dim, use_proto_z, requires_grad=not fix_z_arch
+                latent_dim,
+                use_proto_z,
+                requires_grad=not fix_z_arch,
+                z_per_class=z_per_class,
+                n_classes=n_classes,
             )
 
         if not fix_z_arch:
@@ -484,12 +497,26 @@ class INN_AA(nn.Module):
 
     def sample(self, A, cond=None):
         if self.interpolation == "linear":
-            t = self.layers_C(A @ self.z_arch)
-            sideinfo = self.layers_sideinfo(A @ self.z_arch)
+            Az = (
+                torch.einsum(
+                    "bj, bjk -> bk", A, self.z_arch[self.condition2labels(cond)]
+                )
+                if self.z_per_class
+                else torch.einsum("bj, jk -> bk", A, self.z_arch)
+            )
         elif self.interpolation == "slerp":
             A_ = torch.sin(A * np.pi * 2 / 3)
-            t = self.layers_C(A_ @ self.z_arch / np.sin(np.pi * 2 / 3))
-            sideinfo = self.layers_sideinfo(A_ @ self.z_arch / np.sin(np.pi * 2 / 3))
+            Az = (
+                torch.einsum(
+                    "bj, bjk -> bk", A_, self.z_arch[self.condition2labels(cond)]
+                )
+                / np.sin(np.pi * 2 / 3)
+                if self.z_per_class
+                else torch.einsum("bj, jk -> bk", A_, self.z_arch)
+                / np.sin(np.pi * 2 / 3)
+            )
+        t = self.layers_C(Az)
+        sideinfo = self.layers_sideinfo(Az)
         return self.inn.sample(t, cond), sideinfo
 
     def compute_losses(self, samples, labels):
@@ -499,7 +526,11 @@ class INN_AA(nn.Module):
 
         recreated, sideinfo = self.sample(A, cond)
 
-        sample_latent_mean = A @ self.z_arch
+        sample_latent_mean = (
+            torch.einsum("bj, bjk -> bk", A, self.z_arch[self.condition2labels(cond)])
+            if self.z_per_class
+            else torch.einsum("bj, jk -> bk", A, self.z_arch)
+        )
         at_loss = torch.mean(torch.norm(B @ sample_latent_mean - self.z_arch, dim=1))
         recon_loss = torch.norm(recreated - samples)
         class_loss = nn.functional.cross_entropy(sideinfo, labels)
@@ -520,6 +551,9 @@ class INN_AA(nn.Module):
 
     def labels2condition(self, labels):
         return self.inn.labels2condition(labels)
+
+    def condition2labels(self, cond):
+        return torch.where(cond[-1])[-1]
 
     def save(self, path):
         torch.save(self.state_dict(), path)

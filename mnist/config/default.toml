@@ -27,6 +27,7 @@ lambda_mll = 1.0
 latent_dim = 2
 use_proto_z = false
 z_from_similar = false
+z_per_class = false
 interpolation = "linear"
 load_inn = ''
 weight_norm_exp = 1.0

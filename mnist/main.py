@@ -99,7 +99,11 @@ if __name__ == "__main__":
             with torch.no_grad():
                 # Plot latent sample
                 if c.latent_dist == "mixture":
-                    latent = model(samples, model.labels2condition(labels))
+                    if c.model_type == "INN":
+                        latent = model(samples, model.labels2condition(labels))
+                    else:
+                        latent = model.inn(samples, model.labels2condition(labels))
+
                     mean = torch.zeros(
                         c.n_classes, latent.shape[1], dtype=torch.float, device=device
                     )
@@ -139,7 +143,15 @@ if __name__ == "__main__":
                     t, A, B = model(x, model.labels2condition(y))
                     recreated, sideinfo = model.sample(A, model.labels2condition(y))
                     writer.add_image("Recreated", tensor2imgs(recreated[:64]), epoch)
-                    z_pred = B @ A @ model.z_arch
+                    z_pred = B @ (
+                        torch.einsum(
+                            "bj, bjk -> bk",
+                            A,
+                            model.z_arch[y],
+                        )
+                        if c.z_per_class
+                        else torch.einsum("bj, jk -> bk", A, model.z_arch)
+                    )
 
                     # Plot latent space projection
                     if epoch % 10 == 0:
@@ -150,7 +162,21 @@ if __name__ == "__main__":
                             t, A, B = model(samples, model.labels2condition(labels))
                             if c.interpolation == "linear":
                                 latent_codes = torch.cat(
-                                    [latent_codes, (A @ model.z_arch).cpu()], dim=0
+                                    [
+                                        latent_codes,
+                                        (
+                                            torch.einsum(
+                                                "bj, bjk -> bk",
+                                                A,
+                                                model.z_arch[labels],
+                                            )
+                                            if c.z_per_class
+                                            else torch.einsum(
+                                                "bj, jk -> bk", A, model.z_arch
+                                            )
+                                        ).cpu(),
+                                    ],
+                                    dim=0,
                                 )
                             elif c.interpolation == "slerp":
                                 A_ = torch.sin(A * np.pi * 2 / 3)
@@ -158,7 +184,17 @@ if __name__ == "__main__":
                                     [
                                         latent_codes,
                                         (
-                                            A_ @ model.z_arch / np.sin(np.pi * 2 / 3)
+                                            torch.einsum(
+                                                "bj, bjk -> bk",
+                                                A_,
+                                                model.z_arch[labels],
+                                            )
+                                            / np.sin(np.pi * 2 / 3)
+                                            if c.z_per_class
+                                            else torch.einsum(
+                                                "bj, jk -> bk", A_, model.z_arch
+                                            )
+                                            / np.sin(np.pi * 2 / 3)
                                         ).cpu(),
                                     ],
                                     dim=0,
@@ -181,13 +217,22 @@ if __name__ == "__main__":
                                 vmin=0,
                                 vmax=9,
                             )
-                            ax.scatter(
-                                model.z_arch[:, 0].cpu(),
-                                model.z_arch[:, 1].cpu(),
-                                marker="x",
-                                s=100,
-                                c="k",
-                            )
+                            if c.z_per_class:
+                                ax.scatter(
+                                    model.z_arch[:, :, 0].cpu(),
+                                    model.z_arch[:, :, 1].cpu(),
+                                    marker="x",
+                                    s=100,
+                                    c="k",
+                                )
+                            else:
+                                ax.scatter(
+                                    model.z_arch[:, 0].cpu(),
+                                    model.z_arch[:, 1].cpu(),
+                                    marker="x",
+                                    s=100,
+                                    c="k",
+                                )
                             ax.scatter(
                                 z_pred[:, 0].cpu(),
                                 z_pred[:, 1].cpu(),
