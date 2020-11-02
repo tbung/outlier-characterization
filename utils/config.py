@@ -1,6 +1,17 @@
 import argparse
 import toml
-import distutils
+
+
+def strtobool(val):
+    """Convert string to boolean value, respective values are what distutils
+    uses."""
+
+    if val in ["y", "yes", "t", "true", "on", "1", 1]:
+        return True
+    elif val in ["n", "no", "f", "false", "off", "0", 0]:
+        return False
+    else:
+        raise ValueError("Boolean flag value not understood")
 
 
 class Config:
@@ -39,9 +50,7 @@ class Config:
             # True so we need to give it a conversion function
             param_parser.add_argument(
                 f"--{param}",
-                type=type(value)
-                if type(value) is not bool
-                else distutils.util.strtobool,
+                type=type(value) if type(value) is not bool else strtobool,
                 default=value,
             )
 
