@@ -212,6 +212,7 @@ class INN(nn.Module):
         super(INN, self).__init__()
 
         self.img_width = img_width
+        self.latent_dim = img_width * img_width * n_channels
         self.ncl = n_classes
         self.latent_dist = latent_dist
         self.use_min_likelihood = use_min_likelihood
@@ -407,6 +408,7 @@ class INN_AA(nn.Module):
         lambda_recon=1,
         lambda_class=1,
         lambda_proto=100,
+        lambda_jac=0,
         internal_width1=32,
         internal_width2=32,
         **kwargs,
@@ -421,9 +423,11 @@ class INN_AA(nn.Module):
         self.lambda_recon = lambda_recon
         self.lambda_class = lambda_class
         self.lambda_proto = lambda_proto
+        self.lambda_jac = lambda_jac
         self.use_proto_z = use_proto_z
         self.fix_inn = fix_inn
         self.z_per_class = z_per_class
+        self.latent_dim = latent_dim
 
         # TODO: Handle other cases
         if z_from_similar:
@@ -534,6 +538,7 @@ class INN_AA(nn.Module):
         at_loss = torch.mean(torch.norm(B @ sample_latent_mean - self.z_arch, dim=1))
         recon_loss = torch.norm(recreated - samples)
         class_loss = nn.functional.cross_entropy(sideinfo, labels)
+        jac_loss = -torch.mean(self.inn.inn.jacobian(run_forward=False))
 
         if not self.fix_inn:
             neg_log_likeli = self.inn.negative_log_likelihood(t, labels)
@@ -541,6 +546,7 @@ class INN_AA(nn.Module):
         losses["AT"] = self.lambda_at * at_loss
         losses["Recon"] = self.lambda_recon * recon_loss
         losses["Class"] = self.lambda_class * class_loss
+        losses["Jac"] = self.lambda_jac * jac_loss
         if self.use_proto_z:
             proto_loss = torch.sum(
                 (self.z_arch[-1] - torch.mean(sample_latent_mean, dim=0)) ** 2
