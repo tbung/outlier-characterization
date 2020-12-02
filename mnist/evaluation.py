@@ -17,7 +17,7 @@ def compute_latent(
 ):
     """Compute latent representation of data and write to disk"""
     with torch.set_grad_enabled(compute_grad):
-        latent_rs = torch.empty(0, 32 * 32)
+        latent_rs = torch.empty(0, model.latent_dim)
         labels = torch.empty(0).long()
         gradients = torch.empty(0)
 
