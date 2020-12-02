@@ -10,6 +10,7 @@ from crayons import red
 
 import data
 import models
+import evaluation
 from utils import config, logger
 
 
@@ -49,7 +50,7 @@ if __name__ == "__main__":
         weight_decay=1e-5,
     )
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, c.lr_step, c.lr_step)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, c.n_epochs // 3, c.lr_step)
 
     # Prepare constants for plotting, etc.
     fixed_noise_inn = torch.randn(
@@ -153,70 +154,29 @@ if __name__ == "__main__":
                         else torch.einsum("bj, jk -> bk", A, model.z_arch)
                     )
 
+                if epoch % 10 == 0:
                     # Plot latent space projection
-                    if epoch % 10 == 0:
-                        latent_codes = torch.empty(0, c.latent_dim)
-                        all_labels = torch.empty(0, dtype=torch.long)
-                        for samples, labels in tqdm(dataset_train, leave=False):
-                            samples, labels = samples.to(device), labels.to(device)
-                            t, A, B = model(samples, model.labels2condition(labels))
-                            if c.interpolation == "linear":
-                                latent_codes = torch.cat(
-                                    [
-                                        latent_codes,
-                                        (
-                                            torch.einsum(
-                                                "bj, bjk -> bk",
-                                                A,
-                                                model.z_arch[labels],
-                                            )
-                                            if c.z_per_class
-                                            else torch.einsum(
-                                                "bj, jk -> bk", A, model.z_arch
-                                            )
-                                        ).cpu(),
-                                    ],
-                                    dim=0,
-                                )
-                            elif c.interpolation == "slerp":
-                                A_ = torch.sin(A * np.pi * 2 / 3)
-                                latent_codes = torch.cat(
-                                    [
-                                        latent_codes,
-                                        (
-                                            torch.einsum(
-                                                "bj, bjk -> bk",
-                                                A_,
-                                                model.z_arch[labels],
-                                            )
-                                            / np.sin(np.pi * 2 / 3)
-                                            if c.z_per_class
-                                            else torch.einsum(
-                                                "bj, jk -> bk", A_, model.z_arch
-                                            )
-                                            / np.sin(np.pi * 2 / 3)
-                                        ).cpu(),
-                                    ],
-                                    dim=0,
-                                )
-                            all_labels = torch.cat([all_labels, labels.cpu()], dim=0)
+                    latent_rs, labels, gradients = evaluation.compute_latent(
+                        model, dataset_train, compute_grad=True
+                    )
 
-                        # Try to do PCA, ignore if it fails
-                        try:
-                            if c.latent_dim > 2:
-                                _, _, v = torch.svd(latent_codes)
-                                latent_codes = latent_codes @ v
+                    # Try to do PCA, ignore if it fails
+                    try:
+                        if c.latent_dim > 2:
+                            _, _, v = torch.svd(latent_rs)
+                            latent_rs = latent_rs @ v
 
-                            fig, ax = plt.subplots()
-                            img = ax.scatter(
-                                latent_codes[:, 0],
-                                latent_codes[:, 1],
-                                alpha=0.4,
-                                c=all_labels,
-                                cmap="tab10",
-                                vmin=0,
-                                vmax=9,
-                            )
+                        fig, ax = plt.subplots()
+                        img = ax.scatter(
+                            latent_rs[:, 0],
+                            latent_rs[:, 1],
+                            alpha=0.4,
+                            c=labels,
+                            cmap="tab10",
+                            vmin=0,
+                            vmax=9,
+                        )
+                        if c.model_type == "INN_AA":
                             if c.z_per_class:
                                 ax.scatter(
                                     model.z_arch[:, :, 0].cpu(),
@@ -240,12 +200,16 @@ if __name__ == "__main__":
                                 s=100,
                                 c="r",
                             )
-                            ax.set_aspect("equal")
-                            fig.colorbar(img)
-                            writer.add_figure("Latent Space", fig, epoch)
-                            writer.flush()
-                        except ValueError:
-                            writer.flush()
+                        ax.set_aspect("equal")
+                        fig.colorbar(img)
+                        writer.add_figure("Latent Space", fig, epoch)
+                        writer.add_scalar(
+                            "Grad output wrt params", gradients.mean(), epoch
+                        )
+                        writer.flush()
+                    except ValueError:
+                        writer.flush()
+
             log.flush()
             scheduler.step()
 
