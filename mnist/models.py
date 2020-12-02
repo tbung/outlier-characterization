@@ -18,6 +18,9 @@ def construct_inn(
     clamping,
     internal_widths,
     conditional,
+    n_conv_high_res,
+    n_conv_low_res,
+    n_fc,
 ):
     """Construct a invertible neural network"""
 
@@ -95,7 +98,7 @@ def construct_inn(
 
     nodes.append(Ff.Node(nodes[-1], Fm.IRevNetDownsampling, {}))
 
-    for i in range(4):
+    for i in range(n_conv_high_res):
         nodes.append(
             Ff.Node(
                 [nodes[-1].out0],
@@ -123,7 +126,7 @@ def construct_inn(
     if coupling_type != "NICE":
         mod_args["clamp"] = clamping
 
-    for i in range(4):
+    for i in range(n_conv_low_res):
         if i % 2 == 0:
             mod_args["subnet_constructor"] = partial(
                 subnet_conv_1x1, width=internal_widths[1]
@@ -166,7 +169,7 @@ def construct_inn(
     if coupling_type != "NICE":
         mod_args["clamp"] = clamping
 
-    for i in range(2):
+    for i in range(n_fc):
         nodes.append(
             Ff.Node(
                 [nodes[-1].out0],
@@ -207,6 +210,9 @@ class INN(nn.Module):
         latent_dist="normal",
         use_min_likelihood=False,
         lambda_mll=1,
+        n_conv_high_res=4,
+        n_conv_low_res=4,
+        n_fc=2,
         **kwargs,
     ):
         super(INN, self).__init__()
@@ -227,6 +233,9 @@ class INN(nn.Module):
             clamping,
             [internal_width1, internal_width2],
             conditional,
+            n_conv_high_res,
+            n_conv_low_res,
+            n_fc,
         )
 
         if load_inn:

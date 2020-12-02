@@ -23,6 +23,9 @@ clamping = 1.5
 latent_dist = "normal"
 use_min_likelihood = false
 lambda_mll = 1.0
+n_conv_high_res = 4
+n_conv_low_res = 4
+n_fc = 2
 
 latent_dim = 2
 use_proto_z = false
@@ -39,3 +42,4 @@ lambda_at = 10.0
 lambda_recon = 80.0
 lambda_class = 1.0
 lambda_proto = 100.0
+lambda_jac = 0
