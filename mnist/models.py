@@ -185,6 +185,9 @@ def construct_inn(
             )
         )
 
+    if n_fc == 0:
+        del cond_nodes[2]
+
     # nodes.append(Ff.Node([nodes[-1].out0, split_node.out1],
     #                      Fm.Concat1d, {'dim': 0}, name='concat'))
 
@@ -224,6 +227,7 @@ class INN(nn.Module):
         self.use_min_likelihood = use_min_likelihood
         self.lambda_mll = lambda_mll
         self.conditional = conditional
+        self.n_fc = n_fc
 
         self.inn = construct_inn(
             img_width,
@@ -254,12 +258,16 @@ class INN(nn.Module):
     def forward(self, x, cond=None):
         if not self.conditional:
             cond = None
+        elif self.n_fc == 0:
+            cond = cond[:2]
         t = self.inn(x, cond)
         return t
 
     def sample(self, t, cond=None):
         if not self.conditional:
             cond = None
+        elif self.n_fc == 0:
+            cond = cond[:2]
         return self.inn(t, cond, rev=True)
 
     def labels2condition(self, labels):
