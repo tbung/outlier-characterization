@@ -428,6 +428,10 @@ class INN_AA(nn.Module):
         lambda_jac=0,
         internal_width1=32,
         internal_width2=32,
+        aa_allow_negative=False,
+        aa_weights_min=0.0,
+        aa_weights_max=1.0,
+        aa_weights_noise=0,
         **kwargs,
     ):
         super(INN_AA, self).__init__()
@@ -445,6 +449,10 @@ class INN_AA(nn.Module):
         self.fix_inn = fix_inn
         self.z_per_class = z_per_class
         self.latent_dim = latent_dim
+        self.aa_allow_negative = aa_allow_negative
+        self.aa_weights_min = aa_weights_min
+        self.aa_weights_max = aa_weights_max
+        self.aa_weights_noise = aa_weights_noise
 
         # TODO: Handle other cases
         if z_from_similar:
@@ -501,18 +509,36 @@ class INN_AA(nn.Module):
 
     def forward(self, x, cond=None):
         t = self.inn(x, cond)
+
         A = self.layers_A(t)
         exp_A = torch.exp(A - A.max())
         A = exp_A / torch.sum(exp_A ** self.weight_norm_exp, dim=1, keepdim=True) ** (
             1 / self.weight_norm_exp
         )
+
+        if self.aa_allow_negative:
+            A = (self.aa_weights_max - self.aa_weights_min) * A + self.aa_weights_min
+            A = A / torch.sum(A, dim=1, keepdim=True)
+
         A = self.weight_norm_constraint * A
+
+        if self.aa_weights_noise:
+            A = A + self.aa_weights_noise * torch.randn_like(A)
+
         B = self.layers_B(t)
         exp_B = torch.exp(B - B.max())
         B = exp_B / torch.sum(exp_B ** self.weight_norm_exp, dim=1, keepdim=True) ** (
             1 / self.weight_norm_exp
         )
+
+        if self.aa_allow_negative:
+            B = (self.aa_weights_max - self.aa_weights_min) * B + self.aa_weights_min
+            B = B / torch.sum(B, dim=1, keepdim=True)
+
         B = self.weight_norm_constraint * B
+
+        if self.aa_weights_noise:
+            A = A + self.aa_weights_noise * torch.randn_like(A)
 
         return t, A, B.T
 
@@ -585,6 +611,23 @@ class INN_AA(nn.Module):
         self.load_state_dict(
             dict(filter(lambda x: "tmp" not in x[0], torch.load(path).items()))
         )
+
+
+class IB_INN(nn.Module):
+    def __init__(self):
+        pass
+
+    def forward(self, x):
+        pass
+
+    def sample(self, y):
+        pass
+
+    def save(self, path):
+        pass
+
+    def load(self, path):
+        pass
 
 
 def get_model(name):
