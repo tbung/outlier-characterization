@@ -17,11 +17,6 @@ from utils import config, logger
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def tensor2imgs(t, n=8):
-    imgrid = torchvision.utils.make_grid(t, n)
-    return imgrid.data.mul(255).clamp(0, 255).byte().cpu().numpy()
-
-
 if __name__ == "__main__":
     # Load config and set up logging and stuff
     c = config.Config()
@@ -95,6 +90,7 @@ if __name__ == "__main__":
                     log.add_loss(f"{key}", loss)
 
                 total_loss.backward()
+
                 optimizer.step()
 
             with torch.no_grad():
@@ -123,7 +119,7 @@ if __name__ == "__main__":
                 else:
                     samples = model.inn.sample(fixed_noise_inn, fixed_cond)
                 writer.add_image(
-                    "Samples/In-Distribution", tensor2imgs(samples, c.n_classes), epoch
+                    "Samples/In-Distribution", data.tensors2image(c.dataset, samples, c.n_classes), epoch
                 )
 
                 if c.model_type == "INN_AA":
@@ -133,7 +129,7 @@ if __name__ == "__main__":
                         fixed_cond_z,
                     )
                     writer.add_image(
-                        "Z_fixed", tensor2imgs(samples, n_archetypes), epoch
+                        "Z_fixed", data.tensors2image(c.dataset, samples, n_archetypes), epoch
                     )
 
                     # TODO: Plot archetype sample
@@ -143,7 +139,7 @@ if __name__ == "__main__":
                     x, y = x.to(device), y.to(device)
                     t, A, B = model(x, model.labels2condition(y))
                     recreated, sideinfo = model.sample(A, model.labels2condition(y))
-                    writer.add_image("Recreated", tensor2imgs(recreated[:64]), epoch)
+                    writer.add_image("Recreated", data.tensors2image(c.dataset, recreated[:64]), epoch)
                     z_pred = B @ (
                         torch.einsum(
                             "bj, bjk -> bk",
