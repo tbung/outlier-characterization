@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     # Prepare constants for plotting, etc.
     fixed_noise_inn = torch.randn(
-        100, c.n_channels * c.img_width * c.img_width, device=device
+        c.n_classes * c.n_classes, c.n_channels * c.img_width * c.img_width, device=device
     )
 
     fixed_labels = torch.tensor(
@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
     n_archetypes = c.latent_dim + (2 if c.use_proto_z else 1)
     fixed_cond_z = model.labels2condition(
-        torch.tensor(range(10), device=device).repeat_interleave(n_archetypes)
+        torch.tensor(range(c.n_classes), device=device).repeat_interleave(n_archetypes)
     )
 
     try:  # Catch KeyboardInterrupts to do checkpointing

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import torch
+import torchvision
 from torchvision import datasets, transforms
 
 
@@ -140,7 +141,7 @@ def get_dataset(name, train=True):
             shuffle=True,
             pin_memory=True,
             num_workers=4,
-            # drop_last=True
+            drop_last=True
         )
 
 
