@@ -40,7 +40,8 @@ class Config:
         )
         args, extra_args = cf_parser.parse_known_args()
 
-        params = toml.loads(args.config.read())
+        params = toml.load(open('./config/default.toml'))
+        params.update(toml.loads(args.config.read()))
 
         param_parser = argparse.ArgumentParser()
 
