@@ -187,4 +187,4 @@ def denormalize(name, image):
 
 def tensors2image(dset, tensors, n=8):
     image = torchvision.utils.make_grid(tensors, n)
-    return denormalize(dset, image.data).cpu().numpy()
+    return denormalize(dset, image.data).cpu().numpy().clip(0, 1)
