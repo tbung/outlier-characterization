@@ -214,7 +214,7 @@ if __name__ == "__main__":
             if epoch % 100 == 0:
                 # If we reach a multiple of 100 epoch, delete checkpoints that
                 # aren't from multiples of 100 to save disk space
-                for p in checkpoints_path.glob('INN_?[1-9]*.pt'):
+                for p in checkpoints_path.glob('INN*_?[1-9]*.pt'):
                     p.unlink()
 
     except KeyboardInterrupt:
