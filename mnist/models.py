@@ -1,4 +1,5 @@
 from functools import partial
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
@@ -30,7 +31,7 @@ def construct_inn(
         "GLOW": Fm.GLOWCouplingBlock,
         "GIN": Fm.GINCouplingBlock,
     }
-    print(internal_widths)
+    # print(internal_widths)
 
     if conditional:
         cond_nodes = [
@@ -39,7 +40,7 @@ def construct_inn(
             Ff.ConditionNode(n_classes),
         ]
     else:
-        cond_nodes = [None, None, None]
+        cond_nodes = [[], [], []]
 
     def subnet_conv(ch_in, ch_out, width):
         subnet = nn.Sequential(
@@ -319,7 +320,7 @@ class INN(nn.Module):
 
         elif self.latent_dist == "normal":
             zz = torch.sum(latent ** 2, dim=1)
-            jac = self.inn.jacobian(run_forward=False)
+            jac = self.inn.log_jacobian(run_forward=False)
 
             neg_log_likeli = 0.5 * zz - jac
         else:
@@ -409,6 +410,7 @@ class INN_AA(nn.Module):
         n_channels=1,
         n_classes=10,
         coupling_type="GLOW",
+        conditional=True,
         clamping=1.5,
         load_inn=False,
         latent_dist="normal",
@@ -428,6 +430,9 @@ class INN_AA(nn.Module):
         lambda_jac=0,
         internal_width1=32,
         internal_width2=32,
+        n_conv_high_res=4,
+        n_conv_low_res=4,
+        n_fc=2,
         aa_allow_negative=False,
         aa_weights_min=0.0,
         aa_weights_max=1.0,
@@ -472,15 +477,15 @@ class INN_AA(nn.Module):
         n_archs = latent_dim + (2 if use_proto_z else 1)
 
         self.layers_A = nn.Sequential(
-            nn.Linear(32 * 32, n_archs),
+            nn.Linear(n_channels * img_width * img_width, n_archs),
             # nn.Softmax(dim=1)
         )
         self.layers_B = nn.Sequential(
-            nn.Linear(32 * 32, n_archs),
+            nn.Linear(n_channels * img_width * img_width, n_archs),
             # nn.Softmax(dim=0)
         )
         self.layers_C = nn.Sequential(
-            nn.Linear(latent_dim, 32 * 32),
+            nn.Linear(latent_dim, n_channels * img_width * img_width),
             # nn.Softmax(dim=0)
         )
 
@@ -538,7 +543,7 @@ class INN_AA(nn.Module):
         B = self.weight_norm_constraint * B
 
         if self.aa_weights_noise:
-            A = A + self.aa_weights_noise * torch.randn_like(A)
+            B = B + self.aa_weights_noise * torch.randn_like(B)
 
         return t, A, B.T
 
@@ -571,6 +576,10 @@ class INN_AA(nn.Module):
         cond = self.labels2condition(labels)
         t, A, B = self(samples, cond)
 
+        # print(f"t: {t}")
+        # print(f"A: {A}")
+        # print(f"B: {B}")
+
         recreated, sideinfo = self.sample(A, cond)
 
         sample_latent_mean = (
@@ -581,15 +590,15 @@ class INN_AA(nn.Module):
         at_loss = torch.mean(torch.norm(B @ sample_latent_mean - self.z_arch, dim=1))
         recon_loss = torch.norm(recreated - samples)
         class_loss = nn.functional.cross_entropy(sideinfo, labels)
-        jac_loss = -torch.mean(self.inn.inn.jacobian(run_forward=False))
+        jac_loss = -torch.mean(self.inn.inn.log_jacobian(run_forward=False))
 
         if not self.fix_inn:
             neg_log_likeli = self.inn.negative_log_likelihood(t, labels)
+            losses["Jac"] = self.lambda_jac * jac_loss
             losses["NLL"] = self.lambda_nll * neg_log_likeli
         losses["AT"] = self.lambda_at * at_loss
         losses["Recon"] = self.lambda_recon * recon_loss
         losses["Class"] = self.lambda_class * class_loss
-        losses["Jac"] = self.lambda_jac * jac_loss
         if self.use_proto_z:
             proto_loss = torch.sum(
                 (self.z_arch[-1] - torch.mean(sample_latent_mean, dim=0)) ** 2
