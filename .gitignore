@@ -9,3 +9,7 @@ checkpoints
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Old stuff
+**/marginals/*.png
+toy_backup/**/*.png
