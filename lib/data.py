@@ -47,6 +47,8 @@ def get_dataset(name, train=True):
                         # transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
                     ]
                 ),
+                # For some reason 'letters' start at 1
+                target_transform=lambda t: t - 1,
             ),
             batch_size=512,
             shuffle=True,
