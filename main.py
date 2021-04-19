@@ -8,9 +8,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from crayons import red
 
-import data
-import models
-import evaluation
+from lib import data, models, evaluation
 from utils import config, logger
 
 
