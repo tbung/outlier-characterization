@@ -47,3 +47,4 @@ aa_weights_max = 1.0
 aa_weights_min = 0.0
 aa_allow_negative = false
 aa_weights_noise = 0.0
+load_ib_inn = ''
