@@ -4,6 +4,8 @@ checkpoints
 .ipynb_checkpoints
 *.npy
 *.pt
+figures
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
