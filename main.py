@@ -125,6 +125,8 @@ if __name__ == "__main__":
                     samples, _ = model.sample(
                         torch.eye(n_archetypes, device=device).repeat(c.n_classes, 1),
                         fixed_cond_z,
+                        t=(fixed_noise_inn[:(n_archetypes * c.n_classes), n_archetypes:] if
+                           c.nullspace_split else None)
                     )
                     writer.add_image(
                         "Z_fixed", data.tensors2image(c.dataset, samples, n_archetypes), epoch
@@ -136,7 +138,11 @@ if __name__ == "__main__":
                     x, y = next(iter(dataset_train))
                     x, y = x.to(device), y.to(device)
                     t, A, B = model(x, model.labels2condition(y))
-                    recreated, sideinfo = model.sample(A, model.labels2condition(y))
+                    recreated, sideinfo = model.sample(A,
+                                                       model.labels2condition(y),
+                                                       t=(t if
+                                                          c.nullspace_split
+                                                          else None))
                     writer.add_image("Recreated", data.tensors2image(c.dataset, recreated[:64]), epoch)
                     z_pred = B @ (
                         torch.einsum(

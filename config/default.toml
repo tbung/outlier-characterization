@@ -48,3 +48,7 @@ aa_weights_min = 0.0
 aa_allow_negative = false
 aa_weights_noise = 0.0
 load_ib_inn = ''
+nullspace_split = false
+aa_bias = true
+soft_constraint = false
+lambda_constraint = 1.0

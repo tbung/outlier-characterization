@@ -442,6 +442,10 @@ class INN_AA(nn.Module):
         aa_weights_max=1.0,
         aa_weights_noise=0,
         load_ib_inn=False,
+        nullspace_split=False,
+        aa_bias=True,
+        soft_constraint=False,
+        lambda_constraint=1,
         **kwargs,
     ):
         super(INN_AA, self).__init__()
@@ -463,6 +467,9 @@ class INN_AA(nn.Module):
         self.aa_weights_min = aa_weights_min
         self.aa_weights_max = aa_weights_max
         self.aa_weights_noise = aa_weights_noise
+        self.nullspace_split = nullspace_split
+        self.soft_constraint = soft_constraint
+        self.lambda_constraint = lambda_constraint
 
         # TODO: Handle other cases
         if z_from_similar:
@@ -482,15 +489,15 @@ class INN_AA(nn.Module):
         n_archs = latent_dim + (2 if use_proto_z else 1)
 
         self.layers_A = nn.Sequential(
-            nn.Linear(n_channels * img_width * img_width, n_archs),
+            nn.Linear(n_channels * img_width * img_width, n_archs, aa_bias),
             # nn.Softmax(dim=1)
         )
         self.layers_B = nn.Sequential(
-            nn.Linear(n_channels * img_width * img_width, n_archs),
+            nn.Linear(n_channels * img_width * img_width, n_archs, aa_bias),
             # nn.Softmax(dim=0)
         )
         self.layers_C = nn.Sequential(
-            nn.Linear(latent_dim, n_channels * img_width * img_width),
+            nn.Linear(latent_dim, n_channels * img_width * img_width, aa_bias),
             # nn.Softmax(dim=0)
         )
 
@@ -527,40 +534,53 @@ class INN_AA(nn.Module):
 
     def forward(self, x, cond=None):
         t = self.inn(x, cond)
-
+        # if self.nullspace_split:
+        #     _, _, V = torch.svd(list(self.layers_A.children())[0].weight, some=False)
+        #     A = t_ @ V[: self.latent_dim + 1].T
+        #     t = t_ @ V[self.latent_dim + 1 :].T
+        # else:
         A = self.layers_A(t)
-        exp_A = torch.exp(A - A.max())
-        A = exp_A / torch.sum(exp_A ** self.weight_norm_exp, dim=1, keepdim=True) ** (
-            1 / self.weight_norm_exp
-        )
+        if not self.soft_constraint:
+            exp_A = torch.exp(A - A.max())
+            A = exp_A / torch.sum(
+                exp_A ** self.weight_norm_exp, dim=1, keepdim=True
+            ) ** (1 / self.weight_norm_exp)
 
-        if self.aa_allow_negative:
-            A = (self.aa_weights_max - self.aa_weights_min) * A + self.aa_weights_min
-            A = A / torch.sum(A, dim=1, keepdim=True)
+            if self.aa_allow_negative:
+                A = (
+                    self.aa_weights_max - self.aa_weights_min
+                ) * A + self.aa_weights_min
+                A = A / torch.sum(A, dim=1, keepdim=True)
 
-        A = self.weight_norm_constraint * A
+            A = self.weight_norm_constraint * A
 
         if self.aa_weights_noise:
             A = A + self.aa_weights_noise * torch.randn_like(A)
 
         B = self.layers_B(t)
-        exp_B = torch.exp(B - B.max())
-        B = exp_B / torch.sum(exp_B ** self.weight_norm_exp, dim=1, keepdim=True) ** (
-            1 / self.weight_norm_exp
-        )
+        if not self.soft_constraint:
+            exp_B = torch.exp(B - B.max())
+            B = exp_B / torch.sum(
+                exp_B ** self.weight_norm_exp, dim=1, keepdim=True
+            ) ** (1 / self.weight_norm_exp)
 
-        if self.aa_allow_negative:
-            B = (self.aa_weights_max - self.aa_weights_min) * B + self.aa_weights_min
-            B = B / torch.sum(B, dim=1, keepdim=True)
+            if self.aa_allow_negative:
+                B = (
+                    self.aa_weights_max - self.aa_weights_min
+                ) * B + self.aa_weights_min
+                B = B / torch.sum(B, dim=1, keepdim=True)
 
-        B = self.weight_norm_constraint * B
+            B = self.weight_norm_constraint * B
 
         if self.aa_weights_noise:
             B = B + self.aa_weights_noise * torch.randn_like(B)
 
         return t, A, B.T
 
-    def sample(self, A, cond=None):
+    def sample(self, A, cond=None, t=None):
+        # if self.nullspace_split:
+        #     _, _, V = torch.svd(list(self.layers_A.children())[0].weight, some=False)
+
         if self.interpolation == "linear":
             Az = (
                 torch.einsum(
@@ -581,6 +601,13 @@ class INN_AA(nn.Module):
                 / np.sin(np.pi * 2 / 3)
             )
         t = self.layers_C(Az)
+        if self.nullspace_split:
+            # print(f"V: {V.shape}")
+            # print(f"t: {t.shape}")
+            # print(f"Az: {Az.shape}")
+            mA = list(self.layers_A.children())[0].weight
+            imA = torch.pinverse(mA)
+            t = t + ((torch.eye(t.shape[1], device=device) - (imA @ mA)) @ t.T).T
         sideinfo = self.layers_sideinfo(Az)
         return self.inn.sample(t, cond), sideinfo
 
@@ -605,10 +632,10 @@ class INN_AA(nn.Module):
         class_loss = nn.functional.cross_entropy(sideinfo, labels)
         jac_loss = -torch.mean(self.inn.inn.log_jacobian(run_forward=False))
 
-        if not self.fix_inn:
-            neg_log_likeli = self.inn.negative_log_likelihood(t, labels)
-            losses["Jac"] = self.lambda_jac * jac_loss
-            losses["NLL"] = self.lambda_nll * neg_log_likeli
+        # if not self.fix_inn:
+        neg_log_likeli = self.inn.negative_log_likelihood(t, labels)
+        # losses["Jac"] = self.lambda_jac * jac_loss
+        losses["NLL"] = self.lambda_nll * neg_log_likeli
         losses["AT"] = self.lambda_at * at_loss
         losses["Recon"] = self.lambda_recon * recon_loss
         losses["Class"] = self.lambda_class * class_loss
@@ -617,6 +644,10 @@ class INN_AA(nn.Module):
                 (self.z_arch[-1] - torch.mean(sample_latent_mean, dim=0)) ** 2
             )
             losses["Proto"] = self.lambda_proto * proto_loss
+        if self.soft_constraint:
+            losses["Constraint"] = self.lambda_constraint * (
+                torch.sum((1 - torch.sum(A, dim=1)) ** 2) + torch.sum(A < 0)
+            )
 
         return losses
 
